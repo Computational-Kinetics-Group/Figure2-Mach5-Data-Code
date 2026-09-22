@@ -1,0 +1,1 @@
+Mach=5 seed=4 dt=0.0003 burn=1.5 sample=1.5 pairsPer=300 nang=12 nblocks=20 etaHS=0.886226925453 runtime=18.578680067 Nfinal=17403

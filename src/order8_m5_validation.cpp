@@ -21,6 +21,10 @@
 using std::array; using std::vector;
 struct P { double x; array<double,3> v; };
 static constexpr double PI=3.1415926535897932384626433832795;
+// PRL/Nature dimensionless outgoing-direction normalization.
+// The DSMC dynamics below retains the physical diameter-one cross section PI;
+// only the reported collision-production estimators use ETA_HS.
+static constexpr double ETA_HS=0.88622692545275801364908374167057; // sqrt(pi)/2
 static constexpr double LBOX=1.0;
 static constexpr int NC=50;
 static constexpr double DX=LBOX/NC;
@@ -271,10 +275,10 @@ struct Block {
 };
 
 int main(int argc,char**argv){
- if(argc<5){std::cerr<<"usage: exe Mach seed outprefix dt [burntime=1.5] [samptime=1.5] [Ntarget=18000] [pairs_per_station=200] [nang=8] [nblocks=20]\n";return 2;}
+ if(argc<5){std::cerr<<"usage: exe Mach seed outprefix dt [burntime=1.5] [samptime=1.5] [Ntarget=18000] [pairs_per_station=300] [nang=12] [nblocks=20]\n";return 2;}
  double Mach=std::stod(argv[1]); int seed=std::stoi(argv[2]); std::string prefix=argv[3]; double dt=std::stod(argv[4]);
  double burntime=argc>5?std::stod(argv[5]):1.5, samptime=argc>6?std::stod(argv[6]):1.5; int Ntarget=argc>7?std::stoi(argv[7]):18000;
- int pairsPer=argc>8?std::stoi(argv[8]):200, nang=argc>9?std::stoi(argv[9]):8, nblocks=argc>10?std::stoi(argv[10]):20;
+ int pairsPer=argc>8?std::stoi(argv[8]):300, nang=argc>9?std::stoi(argv[9]):12, nblocks=argc>10?std::stoi(argv[10]):20;
  double U1=Mach*std::sqrt(GAM*T1); double rr=((GAM+1)*Mach*Mach)/((GAM-1)*Mach*Mach+2); double p21=(2*GAM*Mach*Mach-(GAM-1))/(GAM+1); double T2=T1*p21/rr; double U2=U1/rr; double n2=N1*rr; double midrho=.5*(N1+n2);
  int burn=(int)std::llround(burntime/dt),samp=(int)std::llround(samptime/dt),sample_every=5; int nsamples=(samp+sample_every-1)/sample_every;
  std::mt19937_64 rng(0x9e3779b97f4a7c15ULL+1000003ULL*seed+((uint64_t)std::llround(Mach*1000))*9176ULL);std::uniform_real_distribution<double>unif(0,1);std::normal_distribution<double>stdn(0,1);
@@ -292,16 +296,16 @@ int main(int argc,char**argv){
       std::uniform_int_distribution<int>pick(0,(int)b.size()-1);
       for(int pp=0;pp<pairsPer;++pp){int ia=pick(rng),ib=pick(rng);if(ia==ib)ib=(ib+1)%b.size();array<double,3>c1,c2,C,G;for(int d=0;d<3;++d){c1[d]=(ps[b[ia]].v[d]-u[d])/rt;c2[d]=(ps[b[ib]].v[d]-u[d])/rt;C[d]=.5*(c1[d]+c2[d]);G[d]=c1[d]-c2[d];}double g=norm3(G);if(g<1e-12)continue;
         double act24=active_24(C[0],C[1],C[2],G[0],G[1],G[2]); double act32=active_32(C[0],C[1],C[2],G[0],G[1],G[2]);
-        double tr24=-PI*g*act24*phys, tr32=-PI*g*act32*phys;
+        double tr24=-ETA_HS*g*act24*phys, tr32=-ETA_HS*g*act32*phys;
         double pre24=burnett(2,4,c1)+burnett(2,4,c2), pre32=burnett(3,2,c1)+burnett(3,2,c2);
         double d24=0,d32=0; for(int aa=0;aa<nang;++aa){array<double,3>n;isotropic(n,rng);array<double,3>p1,p2;for(int d=0;d<3;++d){double gg=g*n[d];p1[d]=C[d]+.5*gg;p2[d]=C[d]-.5*gg;}d24 += burnett(2,4,p1)+burnett(2,4,p2)-pre24; d32 += burnett(3,2,p1)+burnett(3,2,p2)-pre32;}d24/=nang;d32/=nang;
-        B.tree[kk][0]+=tr24; B.direct[kk][0]+=PI*g*d24*phys; B.count[kk][0]++;
-        B.tree[kk][1]+=tr32; B.direct[kk][1]+=PI*g*d32*phys; B.count[kk][1]++;
+        B.tree[kk][0]+=tr24; B.direct[kk][0]+=ETA_HS*g*d24*phys; B.count[kk][0]++;
+        B.tree[kk][1]+=tr32; B.direct[kk][1]+=ETA_HS*g*d32*phys; B.count[kk][1]++;
       }
     }
  };
  int total=burn+samp; auto t0=std::chrono::steady_clock::now(); for(int it=0;it<total;++it){stream(.5*dt);collide();stream(.5*dt);if(it>=burn&&((it-burn)%sample_every==0))sample();} auto t1c=std::chrono::steady_clock::now();
  std::ofstream fo(prefix+"_blocks.csv");fo<<"seed,block,offset,relx,obs,tree,direct,count\n"<<std::setprecision(14);for(int b=0;b<nblocks;++b)for(int k=0;k<5;++k)for(int o=0;o<2;++o){long long cnt=blocks[b].count[k][o];if(!cnt)continue;double rx=blocks[b].relcount[k]?blocks[b].relx[k]/blocks[b].relcount[k]:0;fo<<seed<<","<<b<<","<<offsets[k]<<","<<rx<<","<<(o==0?"j2l4":"j3l2")<<","<<blocks[b].tree[k][o]/cnt<<","<<blocks[b].direct[k][o]/cnt<<","<<cnt<<"\n";}fo.close();
- std::ofstream fm(prefix+"_meta.txt");fm<<std::setprecision(12)<<"Mach="<<Mach<<" seed="<<seed<<" dt="<<dt<<" burn="<<burntime<<" sample="<<samptime<<" pairsPer="<<pairsPer<<" nang="<<nang<<" nblocks="<<nblocks<<" runtime="<<std::chrono::duration<double>(t1c-t0).count()<<" Nfinal="<<ps.size()<<"\n";fm.close();
+ std::ofstream fm(prefix+"_meta.txt");fm<<std::setprecision(12)<<"Mach="<<Mach<<" seed="<<seed<<" dt="<<dt<<" burn="<<burntime<<" sample="<<samptime<<" pairsPer="<<pairsPer<<" nang="<<nang<<" nblocks="<<nblocks<<" etaHS="<<ETA_HS<<" runtime="<<std::chrono::duration<double>(t1c-t0).count()<<" Nfinal="<<ps.size()<<"\n";fm.close();
  std::cerr<<"done seed="<<seed<<" runtime="<<std::chrono::duration<double>(t1c-t0).count()<<" sec\n";
 }

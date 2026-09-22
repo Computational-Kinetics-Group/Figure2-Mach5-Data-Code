@@ -18,10 +18,18 @@ Mach-5 validation plot (Figure 2). It contains no manuscript or Supplement.
   diagnostics.
 - `scripts/run_mach5.sh`: compiles the C++ source, runs four independent
   Mach-5 realizations, aggregates them, and plots the regenerated result.
+- `runs/`: the four raw 20-block CSV files and their run metadata.
 
 The CSV retains the historical column name `tree`; in the paper this is named
 the **single-generator theorem prediction**. The `direct` column is the
 independently sampled hard-sphere weak-form collision bracket.
+
+Both reported columns use the manuscript/PRL outgoing-direction normalization
+`eta_HS = sqrt(pi)/2`. The DSMC collision dynamics retains the physical
+diameter-one cross section `pi`; only the reported collision-production
+estimators use `eta_HS`. Consequently this correction rescales both plotted
+axes together and leaves the slope, normalized RMS mismatch, and paired
+z-scores unchanged.
 
 The labels `-6`, `-3`, `0`, `+3`, and `+6` are cell offsets from the
 instantaneous density midpoint of the shock. Negative offsets are upstream
@@ -54,8 +62,8 @@ make validate
 ```
 
 The simulation uses Mach 5, 50 cells, a target of 18,000 particles,
-`dt=3e-4`, 1.5 time units of burn-in, 1.5 time units of sampling, 200 sampled
-velocity pairs per station and stored sample, eight angular samples per pair,
+`dt=3e-4`, 1.5 time units of burn-in, 1.5 time units of sampling, 300 sampled
+velocity pairs per station and stored sample, 12 angular samples per pair,
 and 20 blocks per realization. Four seeds give 80 block estimates for every
 plotted point. Monte Carlo regeneration will not be bitwise identical to the
 archived CSV unless the same compiler and standard-library random-number

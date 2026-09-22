@@ -9,11 +9,27 @@ import math
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
+from matplotlib.lines import Line2D
 
 
 STYLES = {
     "j2l4": {"label": r"$(j,\ell)=(2,4)$", "marker": "o", "color": "#1f77b4"},
     "j3l2": {"label": r"$(j,\ell)=(3,2)$", "marker": "s", "color": "#ff7f0e"},
+}
+
+# Deliberate offsets keep each station sign clear of its symbol.
+LABEL_OFFSETS = {
+    ("j2l4", -6): (12, 8),
+    ("j2l4", -3): (10, 9),
+    ("j2l4", 0): (10, -12),
+    ("j2l4", 3): (10, 8),
+    ("j2l4", 6): (-13, -15),
+    ("j3l2", -6): (13, 9),
+    ("j3l2", -3): (10, -13),
+    ("j3l2", 0): (10, 8),
+    ("j3l2", 3): (10, 8),
+    ("j3l2", 6): (11, 12),
 }
 
 
@@ -34,25 +50,49 @@ def main() -> None:
     )
 
     fig, ax = plt.subplots(figsize=(9.9, 8.55), constrained_layout=True)
+
     for obs, style in STYLES.items():
         subset = [row for row in rows if row["obs"] == obs]
         x = [float(row["tree"]) for row in subset]
         y = [float(row["direct"]) for row in subset]
         xerr = [float(row["tree_se"]) for row in subset]
         yerr = [float(row["direct_se"]) for row in subset]
-        ax.errorbar(
-            x, y, xerr=xerr, yerr=yerr, linestyle="none", capsize=4,
-            markersize=8, marker=style["marker"], color=style["color"],
-            label=style["label"],
-        )
-        for row, px, py in zip(subset, x, y):
-            offset = int(row["offset"])
-            ax.annotate(f"{offset:+d}", (px, py), xytext=(6, 4),
-                        textcoords="offset points", fontsize=11)
 
-    limit = 1.4e5
+        for px, py in zip(x, y):
+            ax.plot([px, px], [px, py], color=style["color"], linewidth=1.15,
+                    alpha=0.68, zorder=2)
+
+        # Open symbols and horizontal bars: theorem estimates on y=x.
+        ax.errorbar(
+            x, x, xerr=xerr, linestyle="none", capsize=4,
+            markersize=10.5, marker=style["marker"], color=style["color"],
+            markerfacecolor="white", markeredgecolor=style["color"],
+            markeredgewidth=1.8, zorder=3,
+        )
+
+        # Filled symbols and vertical bars: direct weak-form estimates.
+        ax.errorbar(
+            x, y, yerr=yerr, linestyle="none", capsize=4,
+            markersize=6.8, marker=style["marker"], color=style["color"],
+            markerfacecolor=style["color"], markeredgecolor=style["color"],
+            zorder=4,
+        )
+
+        for row, px, py in zip(subset, x, y):
+            station = int(row["offset"])
+            dx, dy = LABEL_OFFSETS[(obs, station)]
+            annotation = ax.annotate(
+                f"{station:+d}", (px, py), xytext=(dx, dy),
+                textcoords="offset points", fontsize=11, zorder=6,
+            )
+            annotation.set_path_effects([
+                path_effects.Stroke(linewidth=3.2, foreground="white"),
+                path_effects.Normal(),
+            ])
+
+    limit = 5.0e4
     ax.plot([-limit, limit], [-limit, limit], "--", color="#2ca02c",
-            linewidth=1.6, label="perfect match")
+            linewidth=1.6, zorder=1)
     ax.set_xscale("symlog", linthresh=10)
     ax.set_yscale("symlog", linthresh=10)
     ax.set_xlim(-limit, limit)
@@ -61,21 +101,40 @@ def main() -> None:
     ax.set_ylabel("Direct hard-sphere weak-form sampling", fontsize=15)
     ax.set_title("Mach-5 shock: blind order-8 collision-production test", fontsize=17)
     ax.grid(True, which="major", alpha=0.25)
+    ax.tick_params(labelsize=12)
     ax.text(
         0.03, 0.975,
-        f"slope through origin = {slope:.6f}\nnormalized RMS mismatch = {nrms:.3f}%",
-        transform=ax.transAxes, va="top", fontsize=14,
+        "fit to filled symbols, constrained through origin\n"
+        f"slope = {slope:.6f} (not shown)\n"
+        f"normalized RMS mismatch = {nrms:.3f}%",
+        transform=ax.transAxes, va="top", fontsize=13.5,
     )
 
-    handles, labels = ax.get_legend_handles_labels()
-    order = [
-        labels.index("perfect match"),
-        labels.index(STYLES["j2l4"]["label"]),
-        labels.index(STYLES["j3l2"]["label"]),
+    role_handles = [
+        Line2D([], [], linestyle="none", marker="D", markersize=8.5,
+               markerfacecolor="white", markeredgecolor="black", markeredgewidth=1.5,
+               label="theorem value on $y=x$"),
+        Line2D([], [], linestyle="none", marker="D", markersize=6.2,
+               markerfacecolor="black", markeredgecolor="black",
+               label="direct weak-form sample"),
     ]
-    ax.legend([handles[i] for i in order], [labels[i] for i in order],
-              loc="lower right", fontsize=13)
-    ax.tick_params(labelsize=12)
+    role_legend = ax.legend(handles=role_handles, loc="upper right", fontsize=11.5,
+                            framealpha=0.93, handletextpad=0.7)
+    ax.add_artist(role_legend)
+
+    observable_handles = [
+        Line2D([], [], linestyle="--", color="#2ca02c", linewidth=1.6,
+               label=r"perfect match: $y=x$ (slope 1)"),
+        Line2D([], [], linestyle="none", marker="o", markersize=8,
+               markerfacecolor=STYLES["j2l4"]["color"],
+               markeredgecolor=STYLES["j2l4"]["color"], label=STYLES["j2l4"]["label"]),
+        Line2D([], [], linestyle="none", marker="s", markersize=8,
+               markerfacecolor=STYLES["j3l2"]["color"],
+               markeredgecolor=STYLES["j3l2"]["color"], label=STYLES["j3l2"]["label"]),
+    ]
+    ax.legend(handles=observable_handles, loc="lower right", fontsize=12.5,
+              framealpha=0.93)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=160)
     plt.close(fig)
